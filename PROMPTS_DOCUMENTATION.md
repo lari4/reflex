@@ -609,3 +609,319 @@ def memo_components_template(
 ```
 
 ---
+
+## Шаблоны Кастомных Компонентов
+
+Шаблоны для создания и публикации собственных Reflex компонентов как отдельных Python пакетов.
+
+**Расположение**: `reflex/custom_components/custom_components.py`
+
+### 1. Шаблон pyproject.toml - `_pyproject_toml_template()`
+
+**Расположение**: `reflex/custom_components/custom_components.py:21`
+
+**Описание**: Генерирует файл `pyproject.toml` для кастомного компонента. Этот файл определяет метаданные пакета, зависимости и настройки сборки для публикации в PyPI.
+
+**Параметры**:
+- `package_name` (str) - имя пакета для PyPI
+- `module_name` (str) - имя Python модуля
+- `reflex_version` (str) - минимальная версия Reflex
+
+**Использование**: Создается при инициализации нового кастомного компонента через `reflex component init`.
+
+**Генерируемая структура**:
+- Build system: setuptools, wheel
+- Метаданные проекта: имя, версия, описание, лицензия
+- Зависимости: минимальная версия Reflex
+- Опциональные зависимости для разработки: build, twine
+
+**Код** (сокращенная версия):
+```python
+def _pyproject_toml_template(
+    package_name: str, module_name: str, reflex_version: str
+) -> str:
+    """Template for custom components pyproject.toml.
+
+    Args:
+        package_name: The name of the package.
+        module_name: The name of the module.
+        reflex_version: The version of Reflex.
+
+    Returns:
+        Rendered pyproject.toml content as string.
+    """
+    return f"""[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{package_name}"
+version = "0.0.1"
+description = "Reflex custom component {module_name}"
+readme = "README.md"
+license = {{ text = "Apache-2.0" }}
+requires-python = ">=3.10"
+authors = [{{ name = "", email = "YOUREMAIL@domain.com" }}]
+keywords = ["reflex","reflex-custom-components"]
+
+dependencies = ["reflex>={reflex_version}"]
+
+classifiers = ["Development Status :: 4 - Beta"]
+
+[project.optional-dependencies]
+dev = ["build", "twine"]
+
+[tool.setuptools.packages.find]
+where = ["custom_components"]
+"""
+```
+
+---
+
+### 2. Шаблон README - `_readme_template()`
+
+**Расположение**: `reflex/custom_components/custom_components.py:62`
+
+**Описание**: Генерирует README.md файл для кастомного компонента с базовой документацией и инструкциями по установке.
+
+**Параметры**:
+- `module_name` (str) - имя модуля компонента
+- `package_name` (str) - имя пакета для установки
+
+**Использование**: Создается автоматически при инициализации кастомного компонента.
+
+**Генерируемая структура**:
+- Заголовок с именем компонента
+- Краткое описание
+- Инструкции по установке через pip
+
+**Код**:
+```python
+def _readme_template(module_name: str, package_name: str) -> str:
+    """Template for custom components README.
+
+    Args:
+        module_name: The name of the module.
+        package_name: The name of the package.
+
+    Returns:
+        Rendered README.md content as string.
+    """
+    return f"""# {module_name}
+
+A Reflex custom component {module_name}.
+
+## Installation
+
+```bash
+pip install {package_name}
+```
+"""
+```
+
+---
+
+### 3. Шаблон исходного кода компонента - `_source_template()`
+
+**Расположение**: `reflex/custom_components/custom_components.py:84`
+
+**Описание**: Генерирует базовый исходный код для нового кастомного компонента. Включает шаблон класса компонента с комментариями и примерами использования различных функций.
+
+**Параметры**:
+- `component_class_name` (str) - имя класса компонента
+- `module_name` (str) - имя модуля
+
+**Использование**: Создается как отправная точка для разработки кастомного компонента.
+
+**Генерируемые элементы**:
+- Импорт Reflex
+- Класс компонента, наследующий от `rx.Component`
+- Комментарии с инструкциями по настройке:
+  - `library` - React библиотека для обертки
+  - `tag` - тег React компонента
+  - `is_default` - флаг default export
+  - `alias` - алиас для избежания конфликтов имен
+  - Props компонента
+  - `lib_dependencies` - дополнительные зависимости
+  - Event triggers
+  - Custom code
+- Функция-хелпер для создания компонента
+
+**Код** (полный):
+```python
+def _source_template(component_class_name: str, module_name: str) -> str:
+    """Template for custom components source.
+
+    Args:
+        component_class_name: The name of the component class.
+        module_name: The name of the module.
+
+    Returns:
+        Rendered custom component source code as string.
+    """
+    return rf'''
+"""Reflex custom component {component_class_name}."""
+
+# For wrapping react guide, visit https://reflex.dev/docs/wrapping-react/overview/
+
+import reflex as rx
+
+# Some libraries you want to wrap may require dynamic imports.
+# This is because they they may not be compatible with Server-Side Rendering (SSR).
+# To handle this in Reflex, all you need to do is subclass `NoSSRComponent` instead.
+# For example:
+# from reflex.components.component import NoSSRComponent
+# class {component_class_name}(NoSSRComponent):
+#     pass
+
+
+class {component_class_name}(rx.Component):
+    """{component_class_name} component."""
+
+    # The React library to wrap.
+    library = "Fill-Me"
+
+    # The React component tag.
+    tag = "Fill-Me"
+
+    # If the tag is the default export from the module, you must set is_default = True.
+    # This is normally used when components don't have curly braces around them when importing.
+    # is_default = True
+
+    # If you are wrapping another components with the same tag as a component in your project
+    # you can use aliases to differentiate between them and avoid naming conflicts.
+    # alias = "Other{component_class_name}"
+
+    # The props of the React component.
+    # Note: when Reflex compiles the component to Javascript,
+    # `snake_case` property names are automatically formatted as `camelCase`.
+    # The prop names may be defined in `camelCase` as well.
+    # some_prop: rx.Var[str] = "some default value"
+    # some_other_prop: rx.Var[int] = 1
+
+    # By default Reflex will install the library you have specified in the library property.
+    # However, sometimes you may need to install other libraries to use a component.
+    # In this case you can use the lib_dependencies property to specify other libraries to install.
+    # lib_dependencies: list[str] = []
+
+    # Event triggers declaration if any.
+    # Below is equivalent to merging `{{ "on_change": lambda e: [e] }}`
+    # onto the default event triggers of parent/base Component.
+    # The function defined for the `on_change` trigger maps event for the javascript
+    # trigger to what will be passed to the backend event handler function.
+    # on_change: rx.EventHandler[lambda e: [e]]
+
+    # To add custom code to your component
+    # def _get_custom_code(self) -> str:
+    #     return "const customCode = 'customCode';"
+
+
+{module_name} = {component_class_name}.create
+'''
+```
+
+---
+
+### 4. Шаблон __init__.py - `_init_template()`
+
+**Расположение**: `reflex/custom_components/custom_components.py:155`
+
+**Описание**: Генерирует файл `__init__.py` для модуля кастомного компонента. Обеспечивает экспорт всех элементов из основного файла компонента.
+
+**Параметры**:
+- `module_name` (str) - имя модуля для импорта
+
+**Использование**: Создается автоматически для правильной структуры Python пакета.
+
+**Код**:
+```python
+def _init_template(module_name: str) -> str:
+    """Template for custom components __init__.py.
+
+    Args:
+        module_name: The name of the module.
+
+    Returns:
+        Rendered __init__.py content as string.
+    """
+    return f"from .{module_name} import *"
+```
+
+---
+
+### 5. Шаблон демо приложения - `_demo_app_template()`
+
+**Расположение**: `reflex/custom_components/custom_components.py:167`
+
+**Описание**: Генерирует демонстрационное Reflex приложение для тестирования кастомного компонента. Приложение показывает как использовать компонент и позволяет проверить его функциональность.
+
+**Параметры**:
+- `custom_component_module_dir` (str) - путь к директории с компонентом
+- `module_name` (str) - имя модуля компонента
+
+**Использование**: Создается при инициализации кастомного компонента для быстрого тестирования.
+
+**Генерируемые элементы**:
+- Импорты Reflex и кастомного компонента
+- Класс State для управления состоянием
+- Функция `index()` - главная страница с примером использования компонента
+- Создание и запуск приложения
+
+**Код** (сокращенная версия):
+```python
+def _demo_app_template(custom_component_module_dir: str, module_name: str) -> str:
+    """Template for custom components demo app.
+
+    Args:
+        custom_component_module_dir: The directory of the custom component module.
+        module_name: The name of the module.
+
+    Returns:
+        Rendered demo app source code as string.
+    """
+    return rf'''
+"""Welcome to Reflex! This file showcases the custom component in a basic app."""
+
+from rxconfig import config
+
+import reflex as rx
+
+from {custom_component_module_dir} import {module_name}
+
+filename = f"{{config.app_name}}/{{config.app_name}}.py"
+
+
+class State(rx.State):
+    """The app state."""
+    pass
+
+def index() -> rx.Component:
+    return rx.center(
+        rx.theme_panel(),
+        rx.vstack(
+            rx.heading("Welcome to Reflex!", size="9"),
+            rx.text(
+                "Test your custom component by editing ",
+                rx.code(filename),
+            ),
+            # Use the custom component here
+            {module_name}(),
+        )
+    )
+
+app = rx.App()
+app.add_page(index)
+'''
+```
+
+---
+
+## Заключение
+
+Эта документация охватывает все промты и шаблоны, используемые в Reflex:
+
+1. **CLI Интерактивные Промты** - для взаимодействия с пользователем через консоль
+2. **Шаблоны Компилятора** - для генерации конфигураций и React кода
+3. **Шаблоны Кастомных Компонентов** - для создания пользовательских компонентов
+
+Важно отметить, что Reflex **не содержит AI промптов** для языковых моделей. Все "промты" в системе - это либо CLI промты для пользователя, либо шаблоны генерации кода.
