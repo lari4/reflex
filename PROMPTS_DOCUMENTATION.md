@@ -398,3 +398,214 @@ def styles_template(stylesheets: list[str]) -> str:
 ```
 
 ---
+
+### Шаблоны React Компонентов
+
+#### 7. Шаблон корня документа - `document_root_template()`
+
+**Расположение**: `reflex/compiler/templates.py:145`
+
+**Описание**: Генерирует корневой компонент документа (Layout), который оборачивает все приложение. Это компонент верхнего уровня, который определяет структуру HTML документа.
+
+**Параметры**:
+- `imports` (list) - список импортов для компонента
+- `document` (dict) - структура корневого компонента документа
+
+**Использование**: Создается при компиляции для определения HTML структуры приложения.
+
+**Код** (сокращенная версия):
+```python
+def document_root_template(*, imports: list[_ImportDict], document: dict[str, Any]):
+    """Template for the document root.
+
+    Generates Layout component with imports and document structure.
+    """
+```
+
+---
+
+#### 8. Шаблон корня приложения - `app_root_template()`
+
+**Расположение**: `reflex/compiler/templates.py:165`
+
+**Описание**: Генерирует корневой компонент приложения (_app.js), который содержит провайдеры, хуки и общую логику приложения. Это точка входа для всех страниц.
+
+**Параметры**:
+- `imports` (list) - список импортов
+- `custom_codes` (iterable) - кастомный JavaScript код
+- `hooks` (dict) - React хуки (useEffect, useState и т.д.)
+- `window_libraries` (list) - библиотеки для глобального объекта window
+- `render` (dict) - структура рендера компонента
+- `dynamic_imports` (set) - динамические импорты
+
+**Использование**: Создается при компиляции как главный компонент приложения.
+
+**Генерируемые элементы**:
+- `AppWrap` - компонент с хуками и рендером
+- `Layout` - компонент с провайдерами (StateProvider, EventLoopProvider, ThemeProvider)
+- `App` - главный компонент приложения
+- Регистрация библиотек в `window.__reflex`
+
+**Код** (сокращенная версия):
+```python
+def app_root_template(
+    *,
+    imports: list[_ImportDict],
+    custom_codes: Iterable[str],
+    hooks: dict[str, VarData | None],
+    window_libraries: list[tuple[str, str]],
+    render: dict[str, Any],
+    dynamic_imports: set[str],
+):
+    """Template for the App root.
+
+    Generates main App component with providers, hooks, and global setup.
+    """
+```
+
+---
+
+#### 9. Шаблон страницы - `page_template()`
+
+**Расположение**: `reflex/compiler/templates.py:429`
+
+**Описание**: Генерирует React компонент для отдельной страницы приложения. Каждая страница имеет свои импорты, хуки и рендер логику.
+
+**Параметры**:
+- `imports` (iterable) - список импортов для страницы
+- `dynamic_imports` (iterable) - динамические импорты
+- `custom_codes` (iterable) - кастомный код
+- `hooks` (dict) - React хуки страницы
+- `render` (dict) - структура рендера
+
+**Использование**: Создается для каждой страницы приложения при компиляции.
+
+**Код**:
+```python
+def page_template(
+    imports: Iterable[_ImportDict],
+    dynamic_imports: Iterable[str],
+    custom_codes: Iterable[str],
+    hooks: dict[str, VarData | None],
+    render: dict[str, Any],
+):
+    """Template for a single react page.
+
+    Returns:
+        Rendered React page component as string.
+    """
+    imports_str = "\n".join([_RenderUtils.get_import(imp) for imp in imports])
+    custom_code_str = "\n".join(custom_codes)
+    dynamic_imports_str = "\n".join(dynamic_imports)
+
+    hooks_str = _render_hooks(hooks)
+    return f"""{imports_str}
+
+{dynamic_imports_str}
+
+{custom_code_str}
+
+export default function Component() {{
+{hooks_str}
+
+  return (
+    {_RenderUtils.render(render)}
+  )
+}}"""
+```
+
+---
+
+#### 10. Шаблон компонента - `component_template()`
+
+**Расположение**: `reflex/compiler/templates.py:417`
+
+**Описание**: Генерирует рендер отдельного компонента. Это базовый шаблон для преобразования Reflex компонента в React JSX код.
+
+**Параметры**:
+- `component` (Component | StatefulComponent) - компонент для рендера
+
+**Использование**: Используется внутренне при компиляции каждого Reflex компонента в React.
+
+**Код**:
+```python
+def component_template(component: Component | StatefulComponent):
+    """Template to render a component tag.
+
+    Args:
+        component: The component to render.
+
+    Returns:
+        Rendered component as string.
+    """
+    return _RenderUtils.render(component.render())
+```
+
+---
+
+#### 11. Шаблон stateful компонента - `stateful_component_template()`
+
+**Расположение**: `reflex/compiler/templates.py:610`
+
+**Описание**: Генерирует stateful компонент - компонент с внутренним состоянием и хуками. Используется для компонентов, которые имеют собственную логику и состояние.
+
+**Параметры**:
+- `tag_name` (str) - имя компонента
+- `memo_trigger_hooks` (list) - хуки для мемоизации
+- `component` (Component) - компонент для рендера
+- `export` (bool) - экспортировать ли компонент
+
+**Использование**: Создается для компонентов с состоянием при компиляции.
+
+**Код**:
+```python
+def stateful_component_template(
+    tag_name: str, memo_trigger_hooks: list[str], component: Component, export: bool
+):
+    """Template for stateful component.
+
+    Returns:
+        Rendered stateful component code as string.
+    """
+    all_hooks = component._get_all_hooks()
+    return f"""
+{"export " if export else ""}function {tag_name} () {{
+  {_render_hooks(all_hooks, memo_trigger_hooks)}
+  return (
+    {_RenderUtils.render(component.render())}
+  )
+}}
+"""
+```
+
+---
+
+#### 12. Шаблон memo компонентов - `memo_components_template()`
+
+**Расположение**: `reflex/compiler/templates.py:649`
+
+**Описание**: Генерирует мемоизированные компоненты используя React.memo для оптимизации перерисовок. Компоненты пересоздаются только при изменении их props.
+
+**Параметры**:
+- `imports` (list) - импорты
+- `components` (list) - список компонентов для мемоизации
+- `dynamic_imports` (iterable) - динамические импорты
+- `custom_codes` (iterable) - кастомный код
+
+**Использование**: Создается для оптимизации производительности часто используемых компонентов.
+
+**Код** (сокращенная версия):
+```python
+def memo_components_template(
+    imports: list[_ImportDict],
+    components: list[dict[str, Any]],
+    dynamic_imports: Iterable[str],
+    custom_codes: Iterable[str],
+) -> str:
+    """Template for memoized components.
+
+    Generates components wrapped in React.memo for performance optimization.
+    """
+```
+
+---
