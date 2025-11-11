@@ -529,3 +529,478 @@ export default function Component() {
 ```
 
 ---
+
+## Пайплайн Обработки Событий
+
+### Описание
+
+Пайплайн обработки событий управляет взаимодействием между frontend (React) и backend (Python) через WebSocket соединение. Обрабатывает клики, ввод данных и другие пользовательские действия.
+
+### Схема процесса
+
+```
+┌─────────────────────────────────────────┐
+│  Пользователь кликает кнопку в UI       │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Frontend: React Event Handler          │
+│  onClick={() => addEvents([             │
+│    Event("state.increment")             │
+│  ])}                                    │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  EventLoopContext.addEvents()           │
+│  Добавление события в очередь           │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  WebSocket отправка на backend          │
+│                                         │
+│  Формат сообщения:                      │
+│  {                                      │
+│    "type": "event",                     │
+│    "name": "state.increment",           │
+│    "payload": {},                       │
+│    "client_id": "abc123"                │
+│  }                                      │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Backend: WebSocket сервер получает     │
+│  сообщение                              │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Парсинг события                        │
+│  - Извлечение имени: "state.increment"  │
+│  - Разделение на state и метод          │
+│    └─> state_name = "state"            │
+│    └─> method_name = "increment"       │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Получение экземпляра State             │
+│  state_instance = state_manager         │
+│                   .get_state("state")   │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Вызов метода State                     │
+│  state_instance.increment()             │
+│                                         │
+│  Python код:                            │
+│  def increment(self):                   │
+│      self.count += 1                    │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  State изменился                        │
+│  state.count: 0 → 1                     │
+│                                         │
+│  Вычисление delta (изменений):         │
+│  delta = {"count": 1}                   │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  WebSocket отправка delta на frontend   │
+│                                         │
+│  Формат ответа:                         │
+│  {                                      │
+│    "type": "state_update",              │
+│    "delta": {                           │
+│      "state": {"count": 1}              │
+│    },                                   │
+│    "events": []                         │
+│  }                                      │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Frontend: Получение delta              │
+│  EventLoop обрабатывает обновление      │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  React useReducer: applyDelta()         │
+│                                         │
+│  Применение изменений к state:          │
+│  prevState.count = 0                    │
+│  newState.count = 1                     │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  React re-render                        │
+│  Обновление UI с новым значением        │
+│  "Count: 1"                             │
+└─────────────────────────────────────────┘
+```
+
+### Передаваемые данные
+
+```
+Frontend Event → Backend Processing → Frontend Update
+
+1. User Action
+   └─> onClick event
+       └─> addEvents([Event("state.increment")])
+
+2. WebSocket Message (Frontend → Backend)
+   {
+     "type": "event",
+     "name": "state.increment",
+     "payload": {},
+     "client_id": "abc-123"
+   }
+
+3. Backend Processing
+   ├─ Parse: "state" + "increment"
+   ├─ Get State: state_manager.get_state("state")
+   ├─ Call Method: state.increment()
+   └─ Calculate Delta: {"count": 0 → 1}
+
+4. WebSocket Response (Backend → Frontend)
+   {
+     "type": "state_update",
+     "delta": {
+       "state": {"count": 1}
+     }
+   }
+
+5. Frontend State Update
+   └─> applyDelta(prevState, delta)
+       └─> newState = {...prevState, count: 1}
+           └─> React re-render
+```
+
+### Используемые шаблоны
+
+Генерируются во время компиляции:
+
+1. **context_template()** - создает:
+   - `EventLoopProvider` - провайдер для обработки событий
+   - `addEvents` функция - добавление событий в очередь
+   - `initialEvents` - события при загрузке
+   - `onLoadInternalEvent` - внутренние события
+
+2. **app_root_template()** - создает:
+   - Интеграцию EventLoopProvider с приложением
+   - Глобальный доступ к `addEvents` через Context
+
+### Пример с параметрами события
+
+```python
+# Python
+def set_name(self, new_name: str):
+    self.name = new_name
+
+# React (сгенерированный код)
+<Input onChange={(e) => addEvents([
+  Event("state.set_name", {new_name: e.target.value})
+])} />
+```
+
+**Поток данных**:
+```
+1. Input onChange → e.target.value = "John"
+2. Event("state.set_name", {new_name: "John"})
+3. WebSocket → {"name": "state.set_name", "payload": {"new_name": "John"}}
+4. Backend → state.set_name("John")
+5. state.name = "John"
+6. Delta → {"name": "John"}
+7. Frontend update → state.name = "John"
+8. Re-render с новым значением
+```
+
+---
+
+## Пайплайн Рендеринга Компонентов
+
+### Описание
+
+Пайплайн рендеринга описывает, как Python компоненты Reflex преобразуются в React JSX во время компиляции и как они рендерятся в браузере.
+
+### Схема процесса
+
+```
+┌─────────────────────────────────────────┐
+│  Python: Определение компонента         │
+│                                         │
+│  def index():                           │
+│      return rx.vstack(                  │
+│          rx.heading("Title"),           │
+│          rx.cond(                       │
+│              State.show,                │
+│              rx.text("Visible"),        │
+│              rx.text("Hidden")          │
+│          ),                             │
+│          rx.foreach(                    │
+│              State.items,               │
+│              lambda item: rx.text(item) │
+│          )                              │
+│      )                                  │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Компиляция: component_template()       │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Обход дерева компонентов               │
+│  _RenderUtils.render()                  │
+└──────────────────┬──────────────────────┘
+                   │
+        ┌──────────┴──────────┐
+        │  Тип компонента?    │
+        └──────────┬──────────┘
+                   │
+    ┌──────────────┼──────────────┬──────────────┐
+    │              │              │              │
+    v              v              v              v
+┌────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ Tag    │   │ Cond     │   │ Foreach  │   │ Match    │
+│        │   │          │   │          │   │          │
+└───┬────┘   └─────┬────┘   └─────┬────┘   └─────┬────┘
+    │              │              │              │
+    v              v              v              v
+┌────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│render_tag()│ │render_       │ │render_       │ │render_       │
+│            │ │condition_    │ │iterable_     │ │match_        │
+│            │ │tag()         │ │tag()         │ │tag()         │
+└─────┬──────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+      │               │                │                │
+      v               v                v                v
+┌─────────────────────────────────────────────────────────────┐
+│  Генерация JSX кода                                         │
+│                                                             │
+│  1. rx.vstack → jsx(Flex, {direction: "column"}, ...)      │
+│                                                             │
+│  2. rx.heading → jsx(Heading, {}, "Title")                 │
+│                                                             │
+│  3. rx.cond → (State.show ? jsx(Text, {}, "Visible")       │
+│                           : jsx(Text, {}, "Hidden"))        │
+│                                                             │
+│  4. rx.foreach → Array.prototype.map.call(                 │
+│                    State.items ?? [],                       │
+│                    (item, i) => jsx(Text, {}, item)         │
+│                  )                                          │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Сгенерированный React компонент        │
+│                                         │
+│  export default function Component() {  │
+│    const state = useContext(State);     │
+│    return (                             │
+│      jsx(Flex, {direction: "column"},   │
+│        jsx(Heading, {}, "Title"),       │
+│        (state.show ?                    │
+│          jsx(Text, {}, "Visible") :     │
+│          jsx(Text, {}, "Hidden")        │
+│        ),                               │
+│        Array.prototype.map.call(        │
+│          state.items ?? [],             │
+│          (item, i) => jsx(Text,{},item) │
+│        )                                │
+│      )                                  │
+│    )                                    │
+│  }                                      │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  Браузер: React выполнение              │
+│  - Вызов Component()                    │
+│  - Получение state из Context           │
+│  - Вычисление условий (cond)            │
+│  - Маппинг массивов (foreach)           │
+│  - Генерация Virtual DOM                │
+└──────────────────┬──────────────────────┘
+                   │
+                   v
+┌─────────────────────────────────────────┐
+│  React DOM рендеринг                    │
+│  Virtual DOM → Actual DOM               │
+│  Отображение в браузере                 │
+└─────────────────────────────────────────┘
+```
+
+### Типы рендеринга
+
+#### 1. Простой тег - `render_tag()`
+
+```python
+rx.heading("Hello", size="9")
+```
+
+**Компиляция**:
+```
+name: "Heading"
+props: {size: "9"}
+children: ["Hello"]
+
+↓
+
+jsx(Heading, {size: "9"}, "Hello")
+```
+
+#### 2. Условный рендеринг - `render_condition_tag()`
+
+```python
+rx.cond(State.is_logged_in,
+    rx.text("Welcome"),
+    rx.text("Please login")
+)
+```
+
+**Компиляция**:
+```
+cond_state: "state.is_logged_in"
+true_value: jsx(Text, {}, "Welcome")
+false_value: jsx(Text, {}, "Please login")
+
+↓
+
+(state.is_logged_in ?
+  jsx(Text, {}, "Welcome") :
+  jsx(Text, {}, "Please login")
+)
+```
+
+#### 3. Итерация - `render_iterable_tag()`
+
+```python
+rx.foreach(State.users, lambda user: rx.text(user.name))
+```
+
+**Компиляция**:
+```
+iterable_state: "state.users"
+arg_name: "user"
+arg_index: "i"
+children: jsx(Text, {}, user.name)
+
+↓
+
+Array.prototype.map.call(
+  state.users ?? [],
+  (user, i) => jsx(Text, {}, user.name)
+)
+```
+
+#### 4. Pattern matching - `render_match_tag()`
+
+```python
+rx.match(State.status,
+    ("loading", rx.spinner()),
+    ("success", rx.text("Done")),
+    ("error", rx.text("Failed")),
+    rx.text("Unknown")  # default
+)
+```
+
+**Компиляция**:
+```
+switch(JSON.stringify(state.status)) {
+  case JSON.stringify("loading"):
+    return jsx(Spinner, {});
+    break;
+  case JSON.stringify("success"):
+    return jsx(Text, {}, "Done");
+    break;
+  case JSON.stringify("error"):
+    return jsx(Text, {}, "Failed");
+    break;
+  default:
+    return jsx(Text, {}, "Unknown");
+    break;
+}
+```
+
+### Используемые шаблоны
+
+1. **page_template()** - обертка для страницы с импортами и хуками
+2. **component_template()** - рендеринг отдельного компонента
+3. **_RenderUtils.render()** - главная функция рендеринга
+4. **_RenderUtils.render_tag()** - обычные теги
+5. **_RenderUtils.render_condition_tag()** - условия
+6. **_RenderUtils.render_iterable_tag()** - циклы
+7. **_RenderUtils.render_match_tag()** - pattern matching
+
+### Полный пример: от Python к DOM
+
+```python
+# 1. Python код
+def index():
+    return rx.vstack(
+        rx.heading(f"Count: {State.count}"),
+        rx.button("+", on_click=State.increment)
+    )
+```
+
+↓ **Компиляция**
+
+```javascript
+// 2. Сгенерированный React
+export default function Component() {
+  const [addEvents] = useContext(EventLoopContext);
+  const state = useContext(StateContexts.State);
+
+  return (
+    jsx(Flex, {direction: "column"},
+      jsx(Heading, {}, `Count: ${state.count}`),
+      jsx(Button, {
+        onClick: () => addEvents([Event("state.increment")])
+      }, "+")
+    )
+  )
+}
+```
+
+↓ **React выполнение**
+
+```html
+<!-- 3. Virtual DOM -->
+<Flex direction="column">
+  <Heading>Count: 5</Heading>
+  <Button onClick={handler}>+</Button>
+</Flex>
+```
+
+↓ **DOM рендеринг**
+
+```html
+<!-- 4. Actual DOM -->
+<div class="rt-Flex rt-r-fd-column">
+  <h1 class="rt-Heading rt-r-size-9">Count: 5</h1>
+  <button class="rt-Button" onclick="...">+</button>
+</div>
+```
+
+---
+
+## Заключение
+
+Эта документация описывает 4 основных пайплайна Reflex:
+
+1. **Инициализация** - создание нового приложения
+2. **Компиляция** - преобразование Python в React
+3. **Обработка событий** - взаимодействие UI ↔ backend
+4. **Рендеринг** - отображение компонентов в браузере
+
+Все пайплайны используют шаблоны из `PROMPTS_DOCUMENTATION.md` для генерации кода.
